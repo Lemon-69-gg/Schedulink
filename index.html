@@ -142,6 +142,14 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 .blk .badge{display:inline-block;margin-top:2px;font-size:9.5px;padding:0 4px;border-radius:4px;border:1px solid currentColor;opacity:.85}
 .blk.faded{opacity:.4}
 .blk.evblk{border-style:dashed;border-width:1.5px;z-index:3}
+.blk[data-evid]{cursor:grab;touch-action:none;user-select:none}
+.blk[data-evid].dragging{cursor:grabbing;z-index:10;opacity:.88;box-shadow:0 8px 20px -6px rgba(0,0,0,.4)}
+.blk .rz{position:absolute;left:0;right:0;height:8px;cursor:ns-resize;touch-action:none;z-index:3}
+.blk .rz.top{top:-3px}
+.blk .rz.bot{bottom:-3px}
+.dragghost{position:fixed;z-index:200;pointer-events:none;border-radius:7px;padding:5px 10px;font-size:12px;
+  font-weight:600;background:var(--accent);color:var(--accent-ink);opacity:.92;box-shadow:0 10px 26px -8px rgba(0,0,0,.45)}
+#addEv{cursor:grab}
 
 .legend{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:11px 13px;border-top:1px solid var(--line);
   font-size:12.5px;color:var(--mist)}
@@ -795,11 +803,14 @@ function renderMember(){
       var top = Math.max(0,((e.s-UI.from)/30)*20);
       var hgt = ((Math.min(e.e,UI.to)-Math.max(e.s,UI.from))/30)*20;
       var wl = weekLabel(e.w);
-      h += '<div class="blk'+(active?"":" faded")+'" style="top:'+top+'px;height:'+Math.max(16,hgt-2)+'px;'
+      h += '<div class="blk'+(active?"":" faded")+'" data-evid="'+e.id+'" style="top:'+top+'px;height:'+Math.max(16,hgt-2)+'px;'
          + 'background:'+m.color+'1F;border-color:'+m.color+'66;color:var(--ink)'
          + (everyWeek?"":";background-image:repeating-linear-gradient(45deg,transparent 0 5px,"+m.color+"1A 5px 9px)")+'">'
+         + '<div class="rz top" data-rz="s"></div>'
          + '<b>'+esc(e.t)+'</b><small class="mono">'+fmtT(e.s)+'–'+fmtT(e.e)+(e.r?" · "+esc(e.r):"")+'</small>'
-         + (wl?'<span class="badge">'+wl+'</span>':'')+'</div>';
+         + (wl?'<span class="badge">'+wl+'</span>':'')
+         + '<div class="rz bot" data-rz="e"></div>'
+         + '</div>';
     });
 
     evBlocks(m,d,ws).forEach(function(x){
@@ -987,7 +998,42 @@ function wireMember(m){
     render();
   });
   $("#addEv").addEventListener("click", function(){
+    if(this._dragged){ this._dragged=false; return; }
     m.ev.push(ev(1,"08:00","09:30","Môn mới","")); pushMember(m); render();
+  });
+  $("#addEv").addEventListener("pointerdown", function(pd){
+    var btn = this, startX = pd.clientX, startY = pd.clientY, dragging = false, ghost = null;
+    function move(pm){
+      var dx = pm.clientX-startX, dy = pm.clientY-startY;
+      if(!dragging && Math.hypot(dx,dy)>6){
+        dragging = true;
+        ghost = document.createElement("div");
+        ghost.className = "dragghost";
+        ghost.textContent = "Môn mới";
+        document.body.appendChild(ghost);
+      }
+      if(dragging){ ghost.style.left=(pm.clientX+10)+"px"; ghost.style.top=(pm.clientY+10)+"px"; }
+    }
+    function up(pu){
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      if(!dragging) return;
+      if(ghost) ghost.remove();
+      var gbody = view.querySelector(".gbody");
+      if(!gbody) return;
+      var gr = gbody.getBoundingClientRect();
+      if(pu.clientX<gr.left||pu.clientX>gr.right||pu.clientY<gr.top||pu.clientY>gr.bottom) return;
+      var cols = view.querySelectorAll(".col"), day = null;
+      cols.forEach(function(c,i){ var r=c.getBoundingClientRect(); if(pu.clientX>=r.left&&pu.clientX<r.right) day=i+1; });
+      if(!day) return;
+      var startMin = UI.from + Math.round(pxToMin(pu.clientY-gr.top)/30)*30;
+      startMin = Math.max(UI.from, Math.min(UI.to-30, startMin));
+      var endMin = Math.min(1440, startMin+90);
+      btn._dragged = true;
+      m.ev.push(ev(day, fmtT(startMin), fmtT(endMin), "Môn mới", "")); pushMember(m); render();
+    }
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
   });
   $("#delM").addEventListener("click", function(){
     if(S.members.length<=1){ toast("Cần giữ lại ít nhất một thành viên."); return; }
@@ -996,6 +1042,72 @@ function wireMember(m){
       UI.sel = UI.sel.filter(function(x){return x!==m.id;});
       S.events.forEach(function(x){ x.members = x.members.filter(function(id){return id!==m.id;}); });
       delMember(m.id); UI.tab = "all"; render();
+    });
+  });
+
+  function pxToMin(px){ return px*30/20; }
+  function snap5(v){ return Math.round(v/5)*5; }
+  function applyGeom(el,s,e2){
+    var top = Math.max(0, ((s-UI.from)/30)*20);
+    var hgt = ((Math.min(e2,UI.to)-Math.max(s,UI.from))/30)*20;
+    el.style.top = top+"px"; el.style.height = Math.max(16,hgt-2)+"px";
+  }
+
+  view.querySelectorAll(".blk[data-evid]").forEach(function(el){
+    var e = m.ev.filter(function(x){return x.id===el.dataset.evid;})[0];
+    if(!e) return;
+
+    el.querySelectorAll(".rz").forEach(function(handle){
+      handle.addEventListener("pointerdown", function(pd){
+        pd.stopPropagation(); pd.preventDefault();
+        handle.setPointerCapture(pd.pointerId);
+        var mode = handle.dataset.rz, startY = pd.clientY, origS = e.s, origE = e.e;
+        el.classList.add("dragging");
+        function move(pm){
+          var dMin = snap5(pxToMin(pm.clientY-startY)), ns = origS, ne = origE;
+          if(mode==="s") ns = Math.min(origE-15, Math.max(0, origS+dMin));
+          else ne = Math.max(origS+15, Math.min(1440, origE+dMin));
+          el._ps = ns; el._pe = ne;
+          applyGeom(el, ns, ne);
+        }
+        function up(){
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", up);
+          el.classList.remove("dragging");
+          if(el._ps!=null){ e.s = el._ps; e.e = el._pe; el._ps=el._pe=null; pushMember(m); render(); }
+        }
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+      });
+    });
+
+    el.addEventListener("pointerdown", function(pd){
+      if(pd.target.closest(".rz")) return;
+      pd.preventDefault();
+      el.setPointerCapture(pd.pointerId);
+      var startX = pd.clientX, startY = pd.clientY;
+      var origS = e.s, origE = e.e, dur = origE-origS, origD = e.d;
+      var cols = Array.from(view.querySelectorAll(".col"));
+      var colW = cols[0] ? cols[0].getBoundingClientRect().width : 0;
+      el.classList.add("dragging");
+      function move(pm){
+        var dMin = snap5(pxToMin(pm.clientY-startY));
+        var ns = Math.max(0, Math.min(1440-dur, origS+dMin)), ne = ns+dur;
+        var dCol = colW ? Math.round((pm.clientX-startX)/colW) : 0;
+        var nd = Math.max(1, Math.min(7, origD+dCol));
+        el._ps = ns; el._pe = ne; el._pd = nd;
+        applyGeom(el, ns, ne);
+        el.style.transform = "translateX("+((nd-origD)*colW)+"px)";
+      }
+      function up(){
+        el.removeEventListener("pointermove", move);
+        el.removeEventListener("pointerup", up);
+        el.classList.remove("dragging");
+        el.style.transform = "";
+        if(el._ps!=null){ e.d=el._pd; e.s=el._ps; e.e=el._pe; el._ps=el._pe=el._pd=null; pushMember(m); render(); }
+      }
+      el.addEventListener("pointermove", move);
+      el.addEventListener("pointerup", up);
     });
   });
 
