@@ -203,6 +203,15 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 .tip .note{margin-top:7px;padding-top:7px;border-top:1px solid var(--line-soft);color:var(--mist);font-size:11.5px}
 .tip .ebar{margin-top:6px;font-size:11.5px;color:var(--warn);font-weight:600}
 
+.ctxmenu{position:fixed;z-index:80;display:none;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 14px 34px -12px rgba(0,0,0,.4);padding:5px;min-width:160px;font-size:13.5px}
+.ctxmenu.on{display:block}
+.ctxmenu button{display:flex;align-items:center;width:100%;text-align:left;background:transparent;
+  border:0;border-radius:7px;padding:7px 10px;cursor:pointer;color:var(--ink);font-size:13.5px}
+.ctxmenu button:hover:not(:disabled){background:var(--panel-2)}
+.ctxmenu button:disabled{opacity:.4;cursor:not-allowed}
+.ctxmenu hr{border:0;border-top:1px solid var(--line-soft);margin:4px 2px}
+
 .mask{position:fixed;inset:0;background:rgba(10,14,22,.5);display:none;z-index:70;padding:18px;overflow:auto}
 .mask.on{display:grid;place-items:center}
 .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;max-width:560px;width:100%;
@@ -274,6 +283,7 @@ footer strong{color:var(--ink);font-weight:600}
 <div class="tip" id="tip"></div>
 <div class="toast" id="toast"></div>
 <div class="mask" id="mask"><div class="modal" id="modal"></div></div>
+<div class="ctxmenu" id="ctxmenu"></div>
 
 <script>
 /* =======================================================================
@@ -984,6 +994,33 @@ function showTip(html,x,y){
 }
 function hideTip(){ tip.classList.remove("on"); }
 
+/* ---------- menu chuột phải (cắt / sao chép / dán / xoá) ---------- */
+var CLIP = null;
+var ctxEl = $("#ctxmenu");
+function closeCtx(){ ctxEl.classList.remove("on"); ctxEl.innerHTML = ""; }
+function openCtx(x, y, items){
+  var h = items.map(function(it){
+    if(it.sep) return "<hr>";
+    return '<button data-act="'+it.act+'"'+(it.disabled?" disabled":"")+'>'+esc(it.label)+'</button>';
+  }).join("");
+  ctxEl.innerHTML = h;
+  ctxEl.classList.add("on");
+  var r = ctxEl.getBoundingClientRect();
+  ctxEl.style.left = Math.max(4, Math.min(window.innerWidth-r.width-8, x))+"px";
+  ctxEl.style.top = Math.max(4, Math.min(window.innerHeight-r.height-8, y))+"px";
+  ctxEl.querySelectorAll("[data-act]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var act = b.dataset.act;
+      closeCtx();
+      items.forEach(function(it){ if(it.act===act && it.run) it.run(); });
+    });
+  });
+}
+document.addEventListener("click", function(e){ if(!e.target.closest(".ctxmenu")) closeCtx(); });
+document.addEventListener("contextmenu", function(e){ if(!e.target.closest(".gridbox")) closeCtx(); });
+document.addEventListener("scroll", closeCtx, true);
+document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeCtx(); });
+
 function tipHTML(d,k,H,total,mems,ws){
   var cell = H[d-1][k], t = UI.from+k*30;
   var h = "<h4>"+DAYS[d-1]+(UI.all?"":" "+fmtD(dayOf(UI.week,d)))+" · "+fmtT(t)+"–"+fmtT(t+30)+"</h4>";
@@ -1125,6 +1162,49 @@ function wireMember(m){
     var top = Math.max(0, ((s-UI.from)/30)*20);
     var hgt = ((Math.min(e2,UI.to)-Math.max(s,UI.from))/30)*20;
     el.style.top = top+"px"; el.style.height = Math.max(16,hgt-2)+"px";
+  }
+  function gridPointToDayTime(clientX, clientY){
+    var gbody = view.querySelector(".gbody");
+    if(!gbody) return null;
+    var gr = gbody.getBoundingClientRect();
+    if(clientX<gr.left||clientX>gr.right||clientY<gr.top||clientY>gr.bottom) return null;
+    var cols = view.querySelectorAll(".col"), day = null;
+    cols.forEach(function(c,i){ var r=c.getBoundingClientRect(); if(clientX>=r.left&&clientX<r.right) day=i+1; });
+    if(!day) return null;
+    return {day:day, min:UI.from + Math.round(pxToMin(clientY-gr.top)/30)*30};
+  }
+
+  var gridEl = view.querySelector(".gridbox");
+  if(gridEl){
+    gridEl.addEventListener("contextmenu", function(ce){
+      var blkEl = ce.target.closest(".blk[data-evid]");
+      var activeEv = blkEl ? m.ev.filter(function(x){return x.id===blkEl.dataset.evid;})[0] : null;
+      var pt = gridPointToDayTime(ce.clientX, ce.clientY);
+      if(!activeEv && !pt) return;
+      ce.preventDefault();
+      openCtx(ce.clientX, ce.clientY, [
+        {act:"cut", label:"Cắt", disabled:!activeEv, run:function(){
+          CLIP = {t:activeEv.t, r:activeEv.r, w:clone(activeEv.w), dur:activeEv.e-activeEv.s};
+          m.ev = m.ev.filter(function(x){return x.id!==activeEv.id;}); pushMember(m); render();
+        }},
+        {act:"copy", label:"Sao chép", disabled:!activeEv, run:function(){
+          CLIP = {t:activeEv.t, r:activeEv.r, w:clone(activeEv.w), dur:activeEv.e-activeEv.s};
+          toast("Đã sao chép “"+activeEv.t+"”.");
+        }},
+        {act:"paste", label:"Dán", disabled:!CLIP, run:function(){
+          if(!CLIP) return;
+          var day = activeEv ? activeEv.d : pt.day;
+          var startMin = Math.max(0, Math.min(1440-CLIP.dur, activeEv ? activeEv.s : pt.min));
+          var endMin = startMin + CLIP.dur;
+          m.ev.push(ev(day, fmtT(startMin), fmtT(endMin), CLIP.t, CLIP.r, clone(CLIP.w)));
+          pushMember(m); render();
+        }},
+        {sep:true},
+        {act:"delete", label:"Xoá", disabled:!activeEv, run:function(){
+          m.ev = m.ev.filter(function(x){return x.id!==activeEv.id;}); pushMember(m); render();
+        }}
+      ]);
+    });
   }
 
   view.querySelectorAll(".blk[data-evid]").forEach(function(el){
