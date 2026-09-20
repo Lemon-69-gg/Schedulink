@@ -235,6 +235,8 @@ footer strong{color:var(--ink);font-weight:600}
     </div>
     <div class="tools">
       <span class="sync" id="sync" data-s="local"><i></i><span id="syncTxt">Lưu trên máy</span></span>
+      <button class="btn" id="btnUndo" title="Hoàn tác (Ctrl+Z)" disabled>↶ Hoàn tác</button>
+      <button class="btn" id="btnRedo" title="Làm lại (Ctrl+Shift+Z)" disabled>↷ Làm lại</button>
       <button class="btn" id="btnTheme">Đổi nền</button>
       <button class="btn" id="btnShare">Chia sẻ</button>
       <button class="btn primary" id="btnImport">Nhập mã</button>
@@ -423,6 +425,68 @@ function normalize(s){
 
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(err){} }
 
+/* ---------- hoàn tác / làm lại ---------- */
+var HIST = {undo:[], redo:[], last:null, pendingBase:null};
+var HIST_MAX = 80;
+
+function updateHistButtons(){
+  var bu = $("#btnUndo"), br = $("#btnRedo");
+  if(bu) bu.disabled = !HIST.undo.length;
+  if(br) br.disabled = !HIST.redo.length;
+}
+function historyCapture(){
+  var cur = JSON.stringify(S);
+  if(HIST.last===null || HIST.suspend){ HIST.last = cur; HIST.suspend = false; updateHistButtons(); return; }
+  if(cur===HIST.last) return;
+  if(!cloud.applying){
+    HIST.undo.push(HIST.last);
+    if(HIST.undo.length>HIST_MAX) HIST.undo.shift();
+    HIST.redo = [];
+  }
+  HIST.last = cur;
+  updateHistButtons();
+}
+function wireTextHistory(el){
+  el.addEventListener("focus", function(){
+    if(HIST.pendingBase===null) HIST.pendingBase = JSON.stringify(S);
+  });
+  el.addEventListener("blur", function(){
+    if(HIST.pendingBase===null) return;
+    var base = HIST.pendingBase; HIST.pendingBase = null;
+    var cur = JSON.stringify(S);
+    if(cur===base) return;
+    HIST.undo.push(base);
+    if(HIST.undo.length>HIST_MAX) HIST.undo.shift();
+    HIST.redo = [];
+    HIST.last = cur;
+    updateHistButtons();
+  });
+}
+function finishHistoryNav(){
+  UI.sel = UI.sel.filter(function(id){ return !!member(id); });
+  if(UI.tab!=="all" && UI.tab!=="events" && !member(UI.tab)) UI.tab = "all";
+  UI.week = Math.min(Math.max(UI.week, S.week1), S.weekN);
+  HIST.suspend = true;
+  render();
+  if(cloud.on) pushAll();
+}
+function undo(){
+  if(!HIST.undo.length){ toast("Không còn gì để hoàn tác."); return; }
+  var cur = HIST.last, prev = HIST.undo.pop();
+  HIST.redo.push(cur);
+  S = normalize(JSON.parse(prev));
+  finishHistoryNav();
+  toast("Đã hoàn tác.");
+}
+function redo(){
+  if(!HIST.redo.length){ toast("Không còn gì để làm lại."); return; }
+  var cur = HIST.last, next = HIST.redo.pop();
+  HIST.undo.push(cur);
+  S = normalize(JSON.parse(next));
+  finishHistoryNav();
+  toast("Đã làm lại.");
+}
+
 function encode(obj){
   var bytes = new TextEncoder().encode(JSON.stringify(obj));
   var bin = ""; for(var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
@@ -591,6 +655,15 @@ function openModal(html){ $("#modal").innerHTML = html; $("#mask").classList.add
 function closeModal(){ $("#mask").classList.remove("on"); }
 $("#mask").addEventListener("click", function(e){ if(e.target===$("#mask")) closeModal(); });
 document.addEventListener("keydown", function(e){ if(e.key==="Escape"){ closeModal(); hideTip(); } });
+document.addEventListener("keydown", function(e){
+  if(!(e.ctrlKey||e.metaKey)) return;
+  var key = e.key.toLowerCase();
+  if(key!=="z"&&key!=="y") return;
+  var tag = (e.target&&e.target.tagName)||"";
+  if(tag==="INPUT"||tag==="TEXTAREA"||(e.target&&e.target.isContentEditable)) return;
+  if(key==="y"||(key==="z"&&e.shiftKey)){ e.preventDefault(); redo(); }
+  else{ e.preventDefault(); undo(); }
+});
 
 function askText(title, desc, val, okLabel, cb){
   openModal('<h3>'+esc(title)+'</h3><p>'+desc+'</p>'
@@ -899,7 +972,7 @@ function render(){
   if(UI.tab==="all") renderCombined();
   else if(UI.tab==="events") renderEvents();
   else renderMember();
-  save(); syncHash();
+  save(); syncHash(); historyCapture();
 }
 
 /* ---------- tooltip ---------- */
@@ -989,6 +1062,7 @@ function parseWeeks(v){
 function wireMember(m){
   $("#mName").addEventListener("input", function(){ m.name = this.value.slice(0,28); renderTabs(); save(); syncHash(); pushMember(m); });
   $("#mSchool").addEventListener("input", function(){ m.school = this.value.slice(0,24); save(); syncHash(); pushMember(m); });
+  wireTextHistory($("#mName")); wireTextHistory($("#mSchool"));
   view.querySelectorAll(".sw").forEach(function(b){
     b.addEventListener("click", function(){ m.color = b.dataset.color; pushMember(m); render(); });
   });
@@ -1120,6 +1194,7 @@ function wireMember(m){
     row.querySelectorAll("[data-f]").forEach(function(inp){
       var f = inp.dataset.f;
       var t = (inp.tagName==="SELECT"||inp.type==="time") ? "change" : "input";
+      if(f==="t"||f==="r"||f==="wl") wireTextHistory(inp);
       inp.addEventListener(t, function(){
         var v = inp.value;
         if(f==="t") e.t = v.slice(0,60);
@@ -1162,6 +1237,7 @@ function wireEvents(){
     row.querySelectorAll("[data-f]").forEach(function(inp){
       var f = inp.dataset.f;
       var t = (inp.tagName==="SELECT"||inp.type==="time") ? "change" : "input";
+      if(f==="t"||f==="wl") wireTextHistory(inp);
       inp.addEventListener(t, function(){
         var v = inp.value;
         if(f==="t") x.t = v.slice(0,60);
@@ -1234,6 +1310,9 @@ $("#wPrev").addEventListener("click", function(){ if(UI.week>S.week1){ UI.week--
 $("#wNext").addEventListener("click", function(){ if(UI.week<S.weekN){ UI.week++; render(); } });
 $("#modeWeek").addEventListener("click", function(){ UI.all = false; render(); });
 $("#modeAll").addEventListener("click", function(){ UI.all = true; render(); });
+
+$("#btnUndo").addEventListener("click", undo);
+$("#btnRedo").addEventListener("click", redo);
 
 $("#btnTheme").addEventListener("click", function(){
   var cur = document.documentElement.getAttribute("data-theme");
