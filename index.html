@@ -1263,7 +1263,7 @@ function initCloud(){
 
     D.onValue(cloud.ref, function(snap){
       var raw = snap.val();
-      if(!raw || !raw.members){ pushAll(); return; }
+      if(!raw || !raw.members){ S = clone(EMPTY_SEED); save(); render(); pushAll(); return; }
       cloud.applying = true;
       try{
         S = fromCloud(raw);
