@@ -272,14 +272,15 @@ footer strong{color:var(--ink);font-weight:600}
    Để null => app chạy chế độ lưu trên máy + chia sẻ bằng mã.
    Khi tự host (GitHub Pages), thay null bằng config của bạn:
 
-   const FIREBASE_CONFIG = {
+   var FIREBASE_CONFIG = {
      apiKey: "…",
      authDomain: "ten-du-an.firebaseapp.com",
      databaseURL: "https://ten-du-an-default-rtdb.asia-southeast1.firebasedatabase.app",
      projectId: "ten-du-an"
    };
+   window.FIREBASE_CONFIG = FIREBASE_CONFIG;   // dòng này bắt buộc, đừng bỏ
    ======================================================================= */
-const FIREBASE_CONFIG = {
+var FIREBASE_CONFIG = {
   apiKey: "AIzaSyDgY9QuQIcTBmR9sA0eudKRtbdX1pBw4aQ",
   authDomain: "schedulink-app.firebaseapp.com",
   databaseURL: "https://schedulink-app-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -289,6 +290,9 @@ const FIREBASE_CONFIG = {
   appId: "1:281603754022:web:a35b328492bfa253efbee7",
   measurementId: "G-B185DYRJG5"
 };
+// Phải gán tường minh lên window: khai báo bằng const/let ở cấp cao nhất KHÔNG
+// tạo thuộc tính trên window, nên đoạn khởi tạo Firebase sẽ không nhìn thấy nó.
+window.FIREBASE_CONFIG = FIREBASE_CONFIG;
 </script>
 
 <script>
