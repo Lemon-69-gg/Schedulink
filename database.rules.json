@@ -1,0 +1,82 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "rooms": {
+      "$roomId": {
+        ".read":  "$roomId.length >= 10 && $roomId.length <= 40",
+        ".write": "$roomId.length >= 10 && $roomId.length <= 40",
+
+        "meta": {
+          "v":      { ".validate": "newData.isNumber()" },
+          "week1":  { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 60" },
+          "weekN":  { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 60" },
+          "anchor": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)" },
+          "$other": { ".validate": false }
+        },
+
+        "members": {
+          "$memberId": {
+            ".validate": "$memberId.length <= 24 && newData.hasChildren(['name'])",
+
+            "name":   { ".validate": "newData.isString() && newData.val().length <= 28" },
+            "school": { ".validate": "newData.isString() && newData.val().length <= 24" },
+            "color":  { ".validate": "newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{3,8}$/)" },
+            "ord":    { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999" },
+
+            "ev": {
+              "$evId": {
+                ".validate": "$evId.length <= 24 && newData.hasChildren(['d','s','e','t'])",
+                "d":   { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 7" },
+                "s":   { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440" },
+                "e":   { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440" },
+                "t":   { ".validate": "newData.isString() && newData.val().length <= 60" },
+                "r":   { ".validate": "newData.isString() && newData.val().length <= 24" },
+                "wm":  { ".validate": "newData.isString() && newData.val().matches(/^(all|odd|even|list)$/)" },
+                "wl":  { ".validate": "newData.isString() && newData.val().length <= 200" },
+                "ord": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999" },
+
+                "email":     { ".validate": false },
+                "phone":     { ".validate": false },
+                "studentId": { ".validate": false },
+                "mssv":      { ".validate": false },
+                "$other":    { ".validate": false }
+              }
+            },
+
+            "email":     { ".validate": false },
+            "phone":     { ".validate": false },
+            "studentId": { ".validate": false },
+            "mssv":      { ".validate": false },
+            "$other":    { ".validate": false }
+          }
+        },
+
+        "events": {
+          "$eventId": {
+            ".validate": "$eventId.length <= 24 && newData.hasChildren(['t','k'])",
+            "t":       { ".validate": "newData.isString() && newData.val().length <= 60" },
+            "k":       { ".validate": "newData.isString() && newData.val().matches(/^(busy|free|note)$/)" },
+            "s":       { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440" },
+            "e":       { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440" },
+            "days":    { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "members": { ".validate": "newData.isString() && newData.val().length <= 600" },
+            "wm":      { ".validate": "newData.isString() && newData.val().matches(/^(all|odd|even|list)$/)" },
+            "wl":      { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "note":    { ".validate": "newData.isString() && newData.val().length <= 120" },
+            "ord":     { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999" },
+
+            "email":     { ".validate": false },
+            "phone":     { ".validate": false },
+            "studentId": { ".validate": false },
+            "mssv":      { ".validate": false },
+            "$other":    { ".validate": false }
+          }
+        },
+
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
