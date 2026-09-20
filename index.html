@@ -1241,6 +1241,11 @@ function initCloud(){
     }
     cloud.on = true; cloud.mod = D; cloud.room = room; cloud.ref = D.ref(db, "rooms/"+room);
     $("#ftStore").textContent = "Trong phòng “"+room+"” trên Realtime Database của bạn, và trong trình duyệt mỗi người. Ai có link phòng là xem và sửa được.";
+    // Dọn sạch mã #d=... còn sót lại từ trước khi bật đồng bộ (nếu có), để không
+    // gây hiểu lầm là app đang ở chế độ lưu trên máy.
+    if(location.hash.indexOf("d=") >= 0){
+      try{ history.replaceState(null, "", location.pathname+location.search); }catch(err){}
+    }
 
     D.onValue(D.ref(db, ".info/connected"), function(snap){
       if(snap.val()===true){ hideBanner(); if(!cloud.pending) setSync("live","Đồng bộ trực tiếp"); }
