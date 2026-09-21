@@ -230,6 +230,29 @@ footer strong{color:var(--ink);font-weight:600}
   padding:9px 16px;border-radius:99px;font-size:13.5px;opacity:0;pointer-events:none;transition:all .18s ease;z-index:90}
 .toast.on{opacity:1;transform:translateX(-50%)}
 
+/* ai dang mo trang - xep chong nhu Google Docs */
+.who{display:flex;align-items:center;flex:0 0 auto}
+.who[hidden]{display:none}
+.who .av{width:28px;height:28px;border-radius:50%;margin-left:-7px;padding:0;flex:0 0 auto;cursor:pointer;
+  border:2px solid var(--panel);display:grid;place-items:center;line-height:1;
+  font-size:11.5px;font-weight:700;color:#fff;box-shadow:0 0 0 1px rgba(20,27,40,.10)}
+.who .av:first-child{margin-left:0}
+.who .av.ghost{opacity:.4;border-style:dashed}
+.who .av.me{box-shadow:0 0 0 2px var(--accent)}
+.who .av.more{background:var(--panel-2)!important;color:var(--mist);font-weight:600;font-size:11px}
+.av svg{width:17px;height:17px;fill:currentColor;display:block}
+.whorow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)}
+.whorow:last-child{border-bottom:0}
+.whorow .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+  color:#fff;font-weight:700;font-size:12px}
+.whorow.ghost .av{opacity:.4}
+.whorow .nm{font-weight:600;font-size:14px}
+.whorow .st{margin-left:auto;font-size:12px;color:var(--mist)}
+
+.scopesum{flex:1 1 100%;font-size:12.5px;color:var(--mist)}
+.scopesum b{color:var(--ink);font-weight:600}
+.mc.wide[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 @media (max-width:640px){ .wrap{padding:14px 10px 60px} .weeknav .wk{min-width:150px} }
 </style>
@@ -243,6 +266,7 @@ footer strong{color:var(--ink);font-weight:600}
       <p>Ô càng xanh đậm thì càng nhiều người cùng rảnh. Rê chuột hoặc chạm vào một ô để xem ai rảnh và rảnh từ mấy giờ tới mấy giờ.</p>
     </div>
     <div class="tools">
+      <span class="who" id="who" hidden></span>
       <span class="sync" id="sync" data-s="local"><i></i><span id="syncTxt">Lưu trên máy</span></span>
       <button class="btn" id="btnUndo" title="Hoàn tác (Ctrl+Z)" disabled>↶ Hoàn tác</button>
       <button class="btn" id="btnRedo" title="Làm lại (Ctrl+Shift+Z)" disabled>↷ Làm lại</button>
@@ -324,7 +348,8 @@ var DSHORT = ["T2","T3","T4","T5","T6","T7","CN"];
 var PALETTE = ["#3B82F6","#8B5CF6","#F97316","#EC4899","#14B8A6","#EAB308","#06B6D4","#A855F7"];
 var WEEK1 = 35, WEEKN = 50, ANCHOR = "2026-08-24";
 var EXAM = [42];
-var KINDS = {busy:"Cả team bận", free:"Được nghỉ học", note:"Chỉ ghi chú"};
+var KINDS = {busy:"Bận — không rảnh", free:"Được nghỉ — thành rảnh", note:"Chỉ ghi chú"};
+var KSHORT = {busy:"Bận", free:"Được nghỉ", note:"Ghi chú"};
 
 function range(a,b,skip){var r=[];for(var i=a;i<=b;i++){if(!skip||skip.indexOf(i)<0)r.push(i);}return r;}
 var W_ALL=range(WEEK1,WEEKN,EXAM), W_NO36=range(WEEK1,WEEKN,[36,42]),
@@ -431,6 +456,20 @@ function normalize(s){
   });
   s.events.sort(function(a,b){return a.ord-b.ord;});
   return s;
+}
+
+// So sánh nội dung bất kể thứ tự khoá. Dùng dạng dữ liệu gửi lên máy chủ làm
+// mốc: bản dựng tại chỗ và bản đọc về từ Firebase cùng nội dung nhưng khác thứ
+// tự khoá (và khác vài trường phụ như ord), JSON.stringify sẽ báo là khác nhau.
+function canonState(x){ return canon(toCloud(x)); }
+function canon(v){
+  if(Array.isArray(v)) return "["+v.map(canon).join(",")+"]";
+  if(v && typeof v==="object"){
+    return "{"+Object.keys(v).sort().map(function(k){
+      return JSON.stringify(k)+":"+canon(v[k]);
+    }).join(",")+"}";
+  }
+  return JSON.stringify(v);
 }
 
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(err){} }
@@ -546,6 +585,36 @@ function weekLabel(wd){
 }
 
 /* ---------- sự kiện & rảnh/bận ---------- */
+// members rỗng = cả team. Ngược lại chỉ những người được chọn mới bị ảnh hưởng.
+function scopeNames(x){
+  return x.members.map(function(id){ var m = member(id); return m ? m.name : null; })
+                  .filter(Boolean);
+}
+function scopeLabel(x){
+  if(!x.members.length) return "cả team (" + S.members.length + " người)";
+  var n = scopeNames(x);
+  if(!n.length) return "chưa chọn ai";
+  if(n.length <= 3) return n.join(", ");
+  return n.slice(0,2).join(", ") + " và " + (n.length-2) + " người nữa";
+}
+function evSummary(x){
+  var dl = x.days.length ? x.days.map(function(d){return DAYS[d-1];}).join(", ") : "mọi ngày trong tuần";
+  var tl = (x.s===0 && x.e>=1440) ? "cả ngày" : fmtT(x.s)+"–"+fmtT(x.e);
+  var wl = weekLabel(x.w) || (x.w.m==="all" ? "mọi tuần" : "");
+  var verb = x.k==="busy" ? "bận" : (x.k==="free" ? "được nghỉ" : "được nhắc");
+  return "<b>"+esc(scopeLabel(x))+"</b> "+verb+" · "+esc(dl)+" · "+tl+(wl?" · "+esc(wl):"");
+}
+function liveEventRow(row, x){
+  if(!row) return;
+  var sum = row.querySelector(".scopesum");
+  if(sum) sum.innerHTML = evSummary(x);
+  ["s","e"].forEach(function(f){
+    var i = row.querySelector('[data-f="'+f+'"]');
+    if(!i || i===document.activeElement) return;
+    var want = fmtT(f==="s" ? x.s : Math.min(x.e,1439));
+    if(i.value!==want) i.value = want;
+  });
+}
 function eventsFor(m,d,w){
   return S.events.filter(function(x){
     if(!weekMatch(x.w,w)) return false;
@@ -638,13 +707,18 @@ function heat(mems, ws){
         for(var wi=0; wi<ws.length; wi++) if(intervalAt(pre[mi][wi],t)) c++;
         if(c===ws.length) sure.push(m.id); else if(c>0) maybe.push(m.id);
       });
+      var allW = 0;
       for(var wi2=0; wi2<ws.length; wi2++){
-        var any = blkPre[wi2].some(function(list){
-          return list.some(function(x){ return t>=x.s && t<x.e; });
+        var hit = 0;
+        blkPre[wi2].forEach(function(list){
+          if(list.some(function(x){ return t>=x.s && t<x.e; })) hit++;
         });
-        if(any) blkW++;
+        if(hit) blkW++;
+        if(hit===mems.length && mems.length) allW++;
       }
-      col.push({sure:sure, maybe:maybe, blk:(blkW===ws.length&&blkW>0), blkSome:(blkW>0&&blkW<ws.length)});
+      // Đậm = cả nhóm đang xem đều vướng suốt mọi tuần. Nhạt = chỉ một vài người.
+      var full = allW===ws.length && allW>0;
+      col.push({sure:sure, maybe:maybe, blk:full, blkSome:(blkW>0 && !full)});
     }
     out.push(col);
   }
@@ -780,7 +854,7 @@ function renderCombined(){
   if(actEv.length){
     h += '<div class="evbar">';
     actEv.forEach(function(x){
-      var scope = x.members.length ? x.members.length+" người" : "cả team";
+      var scope = scopeLabel(x);
       var wl = weekLabel(x.w) || "mọi tuần";
       var dl = x.days.length ? x.days.map(function(d){return DSHORT[d-1];}).join(" ") : "cả tuần";
       var tl = (x.s===0&&x.e>=1440) ? "cả ngày" : fmtT(x.s)+"–"+fmtT(x.e);
@@ -818,7 +892,8 @@ function renderCombined(){
   for(var i=1;i<=total;i++) h += '<i style="'+heatStyle(i,total)+';border:1px solid var(--line)"></i>';
   h += ' Đủ người</span>'
      + '<span class="lgi"><i class="swatch" style="background-image:repeating-linear-gradient(45deg,transparent 0 4px,rgba(var(--heat),.30) 4px 7px)"></i> Chỉ rảnh một số tuần</span>'
-     + '<span class="lgi"><i class="swatch" style="background:rgba(var(--block),.16);background-image:repeating-linear-gradient(-45deg,transparent 0 5px,rgba(var(--block),.34) 5px 9px)"></i> Vướng sự kiện</span>'
+     + '<span class="lgi"><i class="swatch" style="background:rgba(var(--block),.16);background-image:repeating-linear-gradient(-45deg,transparent 0 5px,rgba(var(--block),.34) 5px 9px)"></i> Cả nhóm vướng sự kiện</span>'
+     + '<span class="lgi"><i class="swatch" style="background-image:repeating-linear-gradient(-45deg,transparent 0 6px,rgba(var(--block),.24) 6px 9px)"></i> Một vài người vướng sự kiện</span>'
      + '</div></div>';
 
   h += '<section class="gold"><h2>Khung giờ nên chốt họp</h2>';
@@ -904,7 +979,7 @@ function renderMember(){
       var col = x.k==="busy" ? "rgba(var(--block),1)" : "rgba(var(--heat),1)";
       h += '<div class="blk evblk" style="top:'+top+'px;height:'+Math.max(16,hgt-2)+'px;'
          + 'background:'+(x.k==="busy"?"rgba(var(--block),.14)":"rgba(var(--heat),.12)")+';border-color:'+col+';color:var(--ink)">'
-         + '<b>'+esc(x.t)+'</b><small>'+KINDS[x.k]+'</small></div>';
+         + '<b>'+esc(x.t)+'</b><small>'+KSHORT[x.k]+'</small></div>';
     });
     h += "</div>";
   }
@@ -938,8 +1013,9 @@ function renderEvents(){
   var h = '<div class="mhead"><h2 style="margin:0;font-size:19px">Sự kiện chung của team</h2>'
     + '<span style="flex:1"></span><button class="btn sm primary" id="addEvent">+ Thêm sự kiện</button></div>'
     + '<p style="margin:0 0 14px;color:var(--mist);font-size:13.5px;max-width:72ch">'
-    + 'Sự kiện áp lên lịch của nhiều người cùng lúc — thứ mà thời khoá biểu từng trường không thể hiện: thi giữa kỳ, tuần nghỉ lễ, deadline chung. '
-    + '<b>Cả team bận</b> biến mọi người được chọn thành bận trong khoảng đó. <b>Được nghỉ học</b> thì ngược lại, xoá hết lịch học trong khoảng đó. '
+    + 'Sự kiện áp lên lịch của một người, vài người hay cả team — thứ mà thời khoá biểu từng trường không thể hiện: thi giữa kỳ, đi làm thêm, về quê, deadline chung. '
+    + 'Chọn ai bị ảnh hưởng ở hàng <b>Áp cho</b>: bấm tên từng người để chỉ áp cho họ, hoặc để <b>Cả team</b> nếu ai cũng dính. '
+    + '<b>Bận</b> biến những người đó thành bận trong khoảng đã chọn. <b>Được nghỉ</b> thì ngược lại, xoá lịch học của họ trong khoảng đó. '
     + '<b>Chỉ ghi chú</b> không đổi tính rảnh, chỉ hiện nhắc nhở.</p>';
 
   h += '<div class="evlist">';
@@ -967,22 +1043,89 @@ function renderEvents(){
            return '<button class="mc" data-day="'+(i+1)+'" aria-pressed="'+(x.days.indexOf(i+1)>=0)+'">'+dn+'</button>';}).join("")
        + '<button class="mc" data-day="0" aria-pressed="'+(!x.days.length)+'">Cả tuần</button></span></div>'
        + '<div class="r"><span class="tag">Áp cho</span><span class="minichips">'
-       + '<button class="mc" data-who="0" aria-pressed="'+(!x.members.length)+'">Cả team</button>'
+       + '<button class="mc wide" data-who="0" aria-pressed="'+(!x.members.length)+'">Cả team</button>'
        + S.members.map(function(m){
            return '<button class="mc" data-who="'+m.id+'" aria-pressed="'+(x.members.indexOf(m.id)>=0)+'">'+esc(m.name)+'</button>';}).join("")
-       + '</span></div></div>';
+       + '</span></div>'
+       + '<div class="r"><span class="scopesum">'+evSummary(x)+'</span></div></div>';
   });
   h += "</div>";
   view.innerHTML = h;
   wireEvents();
 }
 
+/* ---------- ve lai ma khong cuop focus ----------
+   view.innerHTML bi thay toan bo moi lan render, nen o input dang go se mat
+   focus va mat ca vi tri con tro. Ta ghi lai "dia chi" cua o dang focus truoc
+   khi ve, roi tra lai sau khi ve. Nhung o van dang go do (input chu / gio) thi
+   hoan han viec ve lai toi khi nguoi dung roi khoi o. */
+function focusKey(el){
+  if(!el || !el.tagName) return null;
+  if(!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return null;
+  if(el.id) return "id:"+el.id;
+  var row = el.closest ? el.closest("[data-ev],[data-xv]") : null;
+  if(row && el.dataset.f) return (row.dataset.ev ? "ev:"+row.dataset.ev : "xv:"+row.dataset.xv)+"|"+el.dataset.f;
+  return null;
+}
+function elByKey(k){
+  if(!k) return null;
+  if(k.indexOf("id:")===0) return document.getElementById(k.slice(3));
+  var parts = k.split("|"), head = parts[0].split(":");
+  var attr = head[0]==="ev" ? "data-ev" : "data-xv";
+  return view.querySelector("["+attr+'="'+head[1]+'"] [data-f="'+parts[1]+'"]');
+}
+function captureUI(){
+  var el = document.activeElement;
+  var snap = {key:focusKey(el), start:null, end:null, y:window.scrollY, x:0};
+  if(snap.key){
+    // input type=time nem loi khi doc selectionStart -> bo qua
+    try{ snap.start = el.selectionStart; snap.end = el.selectionEnd; }catch(err){}
+  }
+  var sc = view.querySelector(".scroll");
+  if(sc) snap.x = sc.scrollLeft;
+  return snap;
+}
+function restoreUI(snap){
+  var sc = view.querySelector(".scroll");
+  if(sc && snap.x) sc.scrollLeft = snap.x;
+  if(snap.key){
+    var el = elByKey(snap.key);
+    if(el && el!==document.activeElement){
+      try{ el.focus({preventScroll:true}); }catch(err){ try{ el.focus(); }catch(e2){} }
+      if(snap.start!=null){ try{ el.setSelectionRange(snap.start, snap.end); }catch(err){} }
+    }
+  }
+  if(Math.abs(window.scrollY-snap.y)>1) window.scrollTo(0, snap.y);
+}
+
+var RENDER_PENDING = false;
+function typingInView(){
+  var a = document.activeElement;
+  return !!(a && a.tagName && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.closest && a.closest("#view"));
+}
+// Ve lai khi nao "an toan": dang go thi cho toi luc roi o nhap.
+function renderLater(){
+  if(typingInView()){ RENDER_PENDING = true; return; }
+  render();
+}
+document.addEventListener("focusout", function(){
+  if(!RENDER_PENDING) return;
+  // Cho click cua nut vua bam kip chay xong roi moi dung DOM.
+  setTimeout(function(){
+    if(!RENDER_PENDING || typingInView()) return;
+    render();
+  }, 300);
+}, true);
+
 function render(){
+  RENDER_PENDING = false;
+  var snap = captureUI();
   renderTabs(); renderWeekBar();
   if(UI.tab==="all") renderCombined();
   else if(UI.tab==="events") renderEvents();
   else renderMember();
-  save(); syncHash(); historyCapture();
+  restoreUI(snap);
+  save(); syncHash(); historyCapture(); renderPresence();
 }
 
 /* ---------- tooltip ---------- */
@@ -1025,18 +1168,25 @@ function tipHTML(d,k,H,total,mems,ws){
   var cell = H[d-1][k], t = UI.from+k*30;
   var h = "<h4>"+DAYS[d-1]+(UI.all?"":" "+fmtD(dayOf(UI.week,d)))+" · "+fmtT(t)+"–"+fmtT(t+30)+"</h4>";
 
-  var blocking = [];
+  // Gom theo sự kiện, kèm tên những người thực sự bị áp — sự kiện có thể chỉ dính vài người.
+  var blkMap = {}, blocking = [];
   ws.forEach(function(w){
     mems.forEach(function(m){
       eventsFor(m,d,w).forEach(function(x){
-        if(x.k!=="note" && t>=x.s && t<x.e && blocking.indexOf(x.t)<0) blocking.push(x.t);
+        if(x.k==="note" || t<x.s || t>=x.e) return;
+        if(!blkMap[x.id]){ blkMap[x.id] = {t:x.t, names:[]}; blocking.push(blkMap[x.id]); }
+        if(blkMap[x.id].names.indexOf(m.name)<0) blkMap[x.id].names.push(m.name);
       });
     });
   });
+  var blockTxt = blocking.map(function(b){
+    var who = b.names.length===mems.length ? "cả nhóm" : b.names.join(", ");
+    return esc(b.t)+" ("+esc(who)+")";
+  }).join(" · ");
 
   if(!cell.sure.length && !cell.maybe.length){
     h += '<div class="note">Không ai rảnh khung này.</div>';
-    if(blocking.length) h += '<div class="ebar">Sự kiện: '+esc(blocking.join(", "))+'</div>';
+    if(blocking.length) h += '<div class="ebar">Sự kiện: '+blockTxt+'</div>';
     return h;
   }
   h += "<ul>";
@@ -1055,7 +1205,7 @@ function tipHTML(d,k,H,total,mems,ws){
   h += "</ul>";
   h += '<div class="note">'+cell.sure.length+"/"+total+" người rảnh chắc chắn"
      + (cell.maybe.length?" · "+cell.maybe.length+" người tuỳ tuần":"")+"</div>";
-  if(blocking.length) h += '<div class="ebar">Sự kiện: '+esc(blocking.join(", "))+'</div>';
+  if(blocking.length) h += '<div class="ebar">Sự kiện: '+blockTxt+'</div>';
   return h;
 }
 
@@ -1097,7 +1247,9 @@ function parseWeeks(v){
 }
 
 function wireMember(m){
-  $("#mName").addEventListener("input", function(){ m.name = this.value.slice(0,28); renderTabs(); save(); syncHash(); pushMember(m); });
+  $("#mName").addEventListener("input", function(){
+    m.name = this.value.slice(0,28); renderTabs(); save(); syncHash(); pushMember(m); renderPresence();
+  });
   $("#mSchool").addEventListener("input", function(){ m.school = this.value.slice(0,24); save(); syncHash(); pushMember(m); });
   wireTextHistory($("#mName")); wireTextHistory($("#mSchool"));
   view.querySelectorAll(".sw").forEach(function(b){
@@ -1155,6 +1307,26 @@ function wireMember(m){
       delMember(m.id); UI.tab = "all"; render();
     });
   });
+
+  // Sua khoi lich ngay tren luoi thay vi ve lai ca trang. Nho vay o gio
+  // (input type=time) giu duoc focus va con tro khi dang go do.
+  function liveBlock(e2){
+    var el = view.querySelector('.blk[data-evid="'+e2.id+'"]');
+    if(el){
+      applyGeom(el, e2.s, e2.e);
+      var b = el.querySelector("b"), sm = el.querySelector("small");
+      if(b) b.textContent = e2.t;
+      if(sm) sm.textContent = fmtT(e2.s)+"–"+fmtT(e2.e)+(e2.r?" · "+e2.r:"");
+    }
+    var row = view.querySelector('[data-ev="'+e2.id+'"]');
+    if(!row) return;
+    ["s","e"].forEach(function(f2){
+      var i2 = row.querySelector('[data-f="'+f2+'"]');
+      if(!i2 || i2===document.activeElement) return;
+      var want = fmtT(f2==="s" ? e2.s : Math.min(e2.e,1439));
+      if(i2.value!==want) i2.value = want;
+    });
+  }
 
   function pxToMin(px){ return px*30/20; }
   function snap5(v){ return Math.round(v/5)*5; }
@@ -1285,8 +1457,9 @@ function wireMember(m){
         else if(f==="wm"){ e.w.m = v; if(v==="list"&&!e.w.l.length) e.w.l = weeks(); pushMember(m); render(); return; }
         else if(f==="wl"){ e.w.l = parseWeeks(v); }
         pushMember(m);
+        liveBlock(e);
         if(f==="t"||f==="r"||f==="wl"){ save(); syncHash(); return; }
-        render();
+        renderLater();
       });
     });
   });
@@ -1296,9 +1469,9 @@ function wireEvents(){
   $("#addEvent").addEventListener("click", function(){
     askText("Sự kiện mới", "Ví dụ: Thi cuối kỳ, Nghỉ lễ 30/4, Tuần sprint game jam.", "Sự kiện mới", "Tạo sự kiện", function(name){
       var x = {id:uid(), ord:S.events.length, t:name.slice(0,60), k:"busy", s:0, e:1440,
-               days:[], members:[], w:{m:"list",l:[]}, note:""};
+               days:[], members:[], w:{m:"list", l:[UI.all ? S.week1 : UI.week]}, note:""};
       S.events.push(x); pushEvent(x); render();
-      toast("Đã tạo sự kiện. Chọn tuần áp dụng ở ô “Tuần”.");
+      toast("Đã tạo sự kiện cho tuần "+(UI.all ? S.week1 : UI.week)+". Chọn ai bị ảnh hưởng ở hàng “Áp cho”.");
     });
   });
 
@@ -1327,8 +1500,9 @@ function wireEvents(){
         else if(f==="wm"){ x.w.m = v; pushEvent(x); render(); return; }
         else if(f==="wl"){ x.w.l = parseWeeks(v); }
         pushEvent(x);
+        liveEventRow(row, x);
         if(f==="t"||f==="wl"){ save(); syncHash(); return; }
-        render();
+        renderLater();
       });
     });
     row.querySelectorAll("[data-day]").forEach(function(b){
@@ -1343,7 +1517,11 @@ function wireEvents(){
       b.addEventListener("click", function(){
         var id = b.dataset.who;
         if(id==="0") x.members = [];
-        else{ var i = x.members.indexOf(id); if(i>=0) x.members.splice(i,1); else x.members.push(id); }
+        else{
+          var i = x.members.indexOf(id);
+          if(i>=0) x.members.splice(i,1); else x.members.push(id);
+          if(!x.members.length) toast("Không chọn ai tức là áp cho cả team.");
+        }
         pushEvent(x); render();
       });
     });
@@ -1403,7 +1581,7 @@ $("#btnTheme").addEventListener("click", function(){
 try{ var th = localStorage.getItem(KEY+"-theme"); if(th) document.documentElement.setAttribute("data-theme", th); }catch(err){}
 
 /* ============================ Firebase ============================ */
-var cloud = {on:false, mod:null, room:null, ref:null, applying:false, timers:{}, pending:0};
+var cloud = {on:false, mod:null, room:null, ref:null, applying:false, timers:{}, pending:0, dirty:{}};
 
 function setSync(state, text){ $("#sync").setAttribute("data-s", state); $("#syncTxt").textContent = text; }
 function showBanner(html){ var b = $("#banner"); b.innerHTML = html; b.classList.add("on"); }
@@ -1460,14 +1638,33 @@ function fromCloud(raw){
   return normalize(s);
 }
 
+// Những thay đổi đang chờ bay lên máy chủ. Giữ lại để còn đắp lên ảnh chụp
+// nhận từ phòng, nếu không người khác sửa trong lúc mình đang gõ sẽ xoá mất phần của mình.
+function pendingRaw(raw){
+  var out = {meta:(raw && raw.meta) || null,
+             members:(raw && raw.members) ? clone(raw.members) : {},
+             events:(raw && raw.events) ? clone(raw.events) : {}};
+  Object.keys(cloud.dirty).forEach(function(path){
+    var i = path.indexOf("/");
+    if(i<0) return;
+    var root = path.slice(0,i), id = path.slice(i+1), val = cloud.dirty[path];
+    if(!out[root]) return;
+    if(val===null) delete out[root][id];
+    else out[root][id] = val;
+  });
+  return out;
+}
+
 function queueWrite(path, value){
   if(!cloud.on || cloud.applying) return;
+  cloud.dirty[path] = value;
   clearTimeout(cloud.timers[path]);
   cloud.pending++;
   setSync("saving","Đang đồng bộ…");
   cloud.timers[path] = setTimeout(function(){
     var patch = {}; patch[path] = value;
     cloud.mod.update(cloud.ref, patch).then(function(){
+      if(cloud.dirty[path]===value) delete cloud.dirty[path];
       cloud.pending = Math.max(0, cloud.pending-1);
       if(!cloud.pending) setSync("live","Đồng bộ trực tiếp");
     }).catch(function(){
@@ -1492,8 +1689,15 @@ function delEvent(id){ if(cloud.on) queueWrite("events/"+id, null); }
 function pushAll(){
   if(!cloud.on) return;
   setSync("saving","Đang đồng bộ…");
-  cloud.mod.set(cloud.ref, toCloud(S))
-    .then(function(){ setSync("live","Đồng bộ trực tiếp"); })
+  var c = toCloud(S);
+  // update chứ không set: set sẽ xoá luôn nhánh presence của phòng.
+  // Nhánh rỗng phải gửi null tường minh, Firebase không nhận object rỗng.
+  cloud.mod.update(cloud.ref, {
+    meta: c.meta,
+    members: Object.keys(c.members).length ? c.members : null,
+    events:  Object.keys(c.events).length  ? c.events  : null
+  })
+    .then(function(){ cloud.dirty = {}; setSync("live","Đồng bộ trực tiếp"); })
     .catch(function(){ setSync("offline","Không ghi được"); });
 }
 
@@ -1519,6 +1723,7 @@ function initCloud(){
            history.replaceState(null, "", u.pathname+u.search); }catch(err){}
     }
     cloud.on = true; cloud.mod = D; cloud.room = room; cloud.ref = D.ref(db, "rooms/"+room);
+    initPresence(D, db);
     $("#ftStore").textContent = "Trong phòng “"+room+"” trên Realtime Database của bạn, và trong trình duyệt mỗi người. Ai có link phòng là xem và sửa được.";
     // Dọn sạch mã #d=... còn sót lại từ trước khi bật đồng bộ (nếu có), để không
     // gây hiểu lầm là app đang ở chế độ lưu trên máy.
@@ -1533,15 +1738,32 @@ function initCloud(){
     });
 
     D.onValue(cloud.ref, function(snap){
-      var raw = snap.val();
-      if(!raw || !raw.members){ S = clone(EMPTY_SEED); save(); render(); pushAll(); return; }
+      var rawIn = snap.val();
+      var raw = pendingRaw(rawIn);
+      var empty = !raw.members || !Object.keys(raw.members).length;
+      var next;
+      if(empty){
+        next = clone(EMPTY_SEED);
+        next.week1 = S.week1; next.weekN = S.weekN; next.anchor = S.anchor;
+      }else{
+        next = fromCloud(raw);
+      }
+      var js = canonState(next);
+      // Tiếng vọng của chính lệnh ghi vừa rồi (hoặc chỉ là nhịp presence của ai đó):
+      // vẽ lại lúc này chỉ tổ cướp focus và đá tab đang mở về "Lịch chung".
+      if(js === canonState(S)){
+        if(!cloud.pending) setSync("live","Đồng bộ trực tiếp");
+        return;
+      }
       cloud.applying = true;
       try{
-        S = fromCloud(raw);
+        S = next;
         UI.week = Math.min(Math.max(UI.week, S.week1), S.weekN);
         UI.sel = UI.sel.filter(function(id){ return !!member(id); });
-        save(); render();
+        HIST.last = JSON.stringify(next);  // thay đổi của người khác không tạo bước hoàn tác
+        save(); renderLater();
       }finally{ cloud.applying = false; }
+      if(empty && !cloud.pending) pushAll();
       if(!cloud.pending) setSync("live","Đồng bộ trực tiếp");
     }, function(){
       setSync("offline","Không đọc được");
@@ -1553,6 +1775,166 @@ function initCloud(){
     showBanner("<b>Không tải được Firebase.</b> App đang chạy chế độ lưu trên máy — mọi chức năng vẫn dùng bình thường, chia sẻ bằng mã.");
   });
 }
+
+/* =================== Ai đang mở trang (kiểu Google Docs) ===================
+   Google Docs để một chồng avatar tròn ở góc phải: người đã có tên thì hiện chữ
+   cái đầu trên nền màu của họ, khách chưa nhận tên thì hiện hình bóng xám
+   ("Anonymous Hippo"). Ta làm đúng vậy, thêm một mức nữa: icon mờ = vừa rời đi
+   hoặc đang mở tab khác, icon rõ = đang xem ngay lúc này.
+   Dữ liệu nằm ở rooms/<phòng>/presence/<pid>, tự hạ cờ bằng onDisconnect. */
+var NICKS = ["Cá heo","Gấu trúc","Chim sẻ","Mèo mướp","Cáo tuyết","Rùa biển","Nai vàng","Sóc nâu",
+             "Cú mèo","Hải ly","Chuồn chuồn","Bọ rùa","Hồng hạc","Sếu đầu đỏ","Cá voi","Kiến lửa"];
+var GHOST_MS = 15*60*1000;   // rời đi trong 15 phút gần đây -> vẫn hiện, icon mờ
+var STALE_MS = 3*60*1000;    // quá hạn nhịp tim -> coi như đã rời (tab bị tắt đột ngột)
+var AV_MAX = 5;
+var PERSON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.9"/>'
+           + '<path d="M12 13.4c-4.3 0-7.7 2.6-7.7 6.6h15.4c0-4-3.4-6.6-7.7-6.6z"/></svg>';
+var PRES = {};
+var presence = {ref:null, self:null, beat:0, offset:0, wrote:""};
+
+function hashStr(str){ var h=0; for(var i=0;i<str.length;i++) h=(h*31+str.charCodeAt(i))|0; return Math.abs(h); }
+function myPid(){
+  var v = null;
+  try{ v = sessionStorage.getItem(KEY+"-pid"); }catch(err){}
+  if(!v){ v = (uid()+uid()).slice(0,16); try{ sessionStorage.setItem(KEY+"-pid", v); }catch(err){} }
+  return v;
+}
+function loadMe(){
+  var o = {};
+  try{ o = JSON.parse(localStorage.getItem(KEY+"-me")||"{}") || {}; }catch(err){}
+  o.pid = myPid();
+  if(!o.nick) o.nick = NICKS[hashStr(o.pid)%NICKS.length];
+  o.mid = o.mid || "";
+  return o;
+}
+function saveMe(){ try{ localStorage.setItem(KEY+"-me", JSON.stringify({nick:ME.nick, mid:ME.mid})); }catch(err){} }
+var ME = loadMe();
+
+function meMember(){ return ME.mid ? member(ME.mid) : null; }
+function meName(){ var m = meMember(); return m ? m.name : ("Ẩn danh · "+ME.nick); }
+function meColor(){ var m = meMember(); return m ? m.color : "#8A94A6"; }
+function initials(name){
+  var w = String(name).replace(/^Ẩn danh · /,"").trim().split(/\s+/).filter(Boolean);
+  if(!w.length) return "?";
+  if(w.length===1) return w[0].slice(0,1).toUpperCase();
+  return (w[0][0]+w[w.length-1][0]).toUpperCase();
+}
+function safeColor(c){ return /^#[0-9A-Fa-f]{3,8}$/.test(String(c)) ? String(c) : "#8A94A6"; }
+function relTime(ms){ var mi = Math.round(ms/60000); return mi<1 ? "vừa xong" : mi+" phút trước"; }
+
+function presList(){
+  var now = Date.now() + presence.offset, out = [];
+  Object.keys(PRES).forEach(function(pid){
+    var p = PRES[pid];
+    if(!p || !p.n) return;
+    var age = Math.max(0, now - (+p.t||0));
+    if(age > GHOST_MS && pid !== ME.pid) return;
+    var live = p.on===true && age < STALE_MS;
+    out.push({pid:pid, name:String(p.n).slice(0,28), color:safeColor(p.c), mid:String(p.m||""),
+              me:pid===ME.pid, here:live && !p.h, idle:live && !!p.h, age:age});
+  });
+  out.sort(function(a,b){
+    if(a.me!==b.me) return a.me ? -1 : 1;
+    if(a.here!==b.here) return a.here ? -1 : 1;
+    if(a.idle!==b.idle) return a.idle ? -1 : 1;
+    return a.age-b.age;
+  });
+  return out;
+}
+function presState(p){
+  return p.here ? "đang xem trang" : (p.idle ? "đang mở tab khác" : "vừa rời đi · "+relTime(p.age));
+}
+function avatarHTML(p, extra){
+  var lbl = p.name + (p.me ? " (bạn)" : "") + " — " + presState(p);
+  return '<button class="av'+(p.here?"":" ghost")+(p.me?" me":"")+(extra||"")+'" '
+       + 'style="background:'+p.color+'" title="'+esc(lbl)+'" aria-label="'+esc(lbl)+'">'
+       + (p.mid ? esc(initials(p.name)) : PERSON) + '</button>';
+}
+function renderPresence(){
+  var box = $("#who");
+  if(!box) return;
+  if(!cloud.on){ box.hidden = true; return; }
+  var list = presList();
+  box.hidden = !list.length;
+  var h = list.slice(0,AV_MAX).map(function(p){ return avatarHTML(p); }).join("");
+  if(list.length > AV_MAX) h += '<button class="av more">+'+(list.length-AV_MAX)+'</button>';
+  box.innerHTML = h;
+  // Đổi tên/màu thành viên, hoặc vừa nhận mình là ai -> báo cho cả phòng.
+  if(presence.self && presence.wrote !== meName()+"|"+meColor()) writeMe();
+}
+function writeMe(){
+  if(!cloud.on || !cloud.mod || !presence.self) return;
+  var D = cloud.mod;
+  presence.wrote = meName()+"|"+meColor();
+  D.update(presence.self, {n:meName().slice(0,28), c:meColor(), m:ME.mid||"",
+                           on:true, h:!!document.hidden, t:D.serverTimestamp()})
+   .catch(function(){});
+}
+function prunePresence(D){
+  var now = Date.now() + presence.offset;
+  Object.keys(PRES).forEach(function(pid){
+    if(pid===ME.pid) return;
+    var p = PRES[pid];
+    if(p && now-(+p.t||0) <= GHOST_MS*4) return;
+    try{ D.remove(D.child(presence.ref, pid)).catch(function(){}); }catch(err){}
+  });
+}
+function initPresence(D, db){
+  presence.ref  = D.ref(db, "rooms/"+cloud.room+"/presence");
+  presence.self = D.ref(db, "rooms/"+cloud.room+"/presence/"+ME.pid);
+
+  D.onValue(D.ref(db, ".info/serverTimeOffset"), function(sn){ presence.offset = +sn.val()||0; });
+  D.onValue(D.ref(db, ".info/connected"), function(sn){
+    if(sn.val()!==true) return;
+    // Tab đóng hay mất mạng: máy chủ tự hạ cờ, người khác thấy icon mờ "vừa rời đi".
+    D.onDisconnect(presence.self).update({on:false, h:true, t:D.serverTimestamp()});
+    presence.wrote = ""; writeMe();
+  });
+  D.onValue(presence.ref, function(sn){
+    PRES = sn.val() || {};
+    renderPresence();
+    prunePresence(D);
+  }, function(){});
+
+  clearInterval(presence.beat);
+  presence.beat = setInterval(writeMe, 45000);
+  document.addEventListener("visibilitychange", function(){ presence.wrote = ""; writeMe(); });
+  window.addEventListener("pagehide", function(){
+    try{ D.update(presence.self, {on:false, h:true, t:D.serverTimestamp()}); }catch(err){}
+  });
+}
+
+function openWho(){
+  var list = presList();
+  var h = '<h3>Ai đang mở trang này</h3>'
+    + '<p>Icon rõ nét là người đang xem ngay lúc này. Icon mờ là người vừa rời đi hoặc đang mở tab khác. '
+    + 'Ai chưa nhận tên thì hiện ra bằng hình bóng xám.</p>';
+  if(!list.length) h += '<div class="empty">Chưa thấy ai khác ở đây.</div>';
+  list.forEach(function(p){
+    h += '<div class="whorow'+(p.here?"":" ghost")+'">'
+       + '<span class="av" style="background:'+p.color+'">'+(p.mid?esc(initials(p.name)):PERSON)+'</span>'
+       + '<span class="nm">'+esc(p.name)+(p.me?' · bạn':'')+'</span>'
+       + '<span class="st">'+esc(presState(p))+'</span></div>';
+  });
+  h += '<div class="hr"></div>'
+     + '<p style="margin:0 0 9px"><b style="color:var(--ink)">Bạn là ai?</b> Nhận tên của mình để cả team biết ai đang sửa lịch. '
+     + 'Không nhận cũng được — bạn sẽ hiện ra là khách ẩn danh.</p>'
+     + '<div class="minichips">'
+     + '<button class="mc" data-me="" aria-pressed="'+(!ME.mid)+'">Ẩn danh · '+esc(ME.nick)+'</button>'
+     + S.members.map(function(m){
+         return '<button class="mc" data-me="'+m.id+'" aria-pressed="'+(ME.mid===m.id)+'">'+esc(m.name)+'</button>';
+       }).join("")
+     + '</div><div class="row"><button class="btn primary" id="whoDone">Xong</button></div>';
+  openModal(h);
+  $("#modal").querySelectorAll("[data-me]").forEach(function(b){
+    b.addEventListener("click", function(){
+      ME.mid = b.dataset.me || "";
+      saveMe(); presence.wrote = ""; writeMe(); closeModal(); renderPresence();
+    });
+  });
+  $("#whoDone").addEventListener("click", closeModal);
+}
+$("#who").addEventListener("click", function(){ if(cloud.on) openWho(); });
 
 /* ---------- chia sẻ / nhập ---------- */
 $("#btnShare").addEventListener("click", function(){

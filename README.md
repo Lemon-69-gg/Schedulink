@@ -22,6 +22,11 @@ Mỗi team có một "phòng", nhận diện bằng `?room=` trên URL. Ai mở 
 sửa được cùng một lịch; thay đổi hiện ra ở máy người khác trong khoảng một giây.
 Không cần đăng nhập.
 
+Góc phải trên hiện chồng avatar của những người đang mở phòng, kiểu Google Docs:
+icon rõ nét là người đang xem ngay lúc này, icon mờ là người vừa rời đi trong 15 phút
+gần đây hoặc đang mở tab khác. Ai chưa bấm vào chồng avatar để nhận tên mình thì hiện
+ra bằng hình bóng xám như khách ẩn danh.
+
 ---
 
 ## Thiết lập Firebase
@@ -55,6 +60,10 @@ Không cần đăng nhập.
   kèm chặn thẳng tên `email`, `phone`, `studentId`, `mssv`;
 - giới hạn độ dài từng trường (tên ≤ 28 ký tự, tên môn ≤ 60, phòng ≤ 24…) nên không ai
   nhồi được dữ liệu rác vào quota của bạn.
+
+> **Đã dán quy tắc từ trước?** Dán lại. Bản mới thêm nhánh `presence` cho phần
+> "ai đang mở trang". Vì quy tắc dùng danh sách trắng, quy tắc cũ sẽ lặng lẽ từ chối
+> mọi lượt ghi presence và chồng avatar ở góc phải sẽ không bao giờ hiện ai.
 
 Realtime Database không có luật giới hạn tổng dung lượng một nhánh, nên phần chặn
 "phình to" nằm ở giới hạn độ dài từng trường ở trên. Nếu muốn chắc hơn nữa, vào

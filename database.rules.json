@@ -75,6 +75,25 @@
           }
         },
 
+        "presence": {
+          "$pid": {
+            ".validate": "$pid.length <= 40 && newData.hasChildren(['n'])",
+
+            "n":  { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "c":  { ".validate": "newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{3,8}$/)" },
+            "m":  { ".validate": "newData.isString() && newData.val().length <= 24" },
+            "on": { ".validate": "newData.isBoolean()" },
+            "h":  { ".validate": "newData.isBoolean()" },
+            "t":  { ".validate": "newData.isNumber()" },
+
+            "email":     { ".validate": false },
+            "phone":     { ".validate": false },
+            "studentId": { ".validate": false },
+            "mssv":      { ".validate": false },
+            "$other":    { ".validate": false }
+          }
+        },
+
         "$other": { ".validate": false }
       }
     }
